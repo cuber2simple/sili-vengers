@@ -13,8 +13,16 @@ from sili_vengers.commands.task_cmd import task
 from sili_vengers.commands.log_cmd import log
 
 
+def _get_version():
+    try:
+        from importlib.metadata import version
+        return version("sili-vengers")
+    except Exception:
+        return "unknown"
+
+
 @click.group()
-@click.version_option(version="0.2.0", prog_name="sili-vengers")
+@click.version_option(version=_get_version(), prog_name="sili-vengers")
 def cli():
     """
     ⚡ Sili-vengers - Multi-agent Claude Code orchestration
