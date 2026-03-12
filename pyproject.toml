@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"   # ← 改这行
+
+[project]
+name = "sili-vengers"
+version = "0.1.0"
+description = "Multi-agent Claude Code orchestration"
+requires-python = ">=3.11"
+dependencies = [
+    "click>=8.1",
+    "rich>=13.0",
+    "tomli-w>=1.0",
+]
+
+[project.scripts]
+sili-vengers = "sili_vengers.cli:cli"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["sili_vengers*"]

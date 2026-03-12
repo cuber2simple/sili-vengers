@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+dist/
+build/
+
+# Sili-vengers runtime
+.vengers/
+.worktrees/
+vengers-code.md
+
+# OS
+.DS_Store
