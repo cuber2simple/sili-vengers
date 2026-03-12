@@ -9,7 +9,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.columns import Columns
 from rich.markdown import Markdown
-from rich.prompt import Prompt, Confirm
+from rich.prompt import Prompt
 from sili_vengers.core.runner import run_agents_parallel, run_agent
 
 console = Console()
@@ -24,10 +24,10 @@ ARCHITECT_LABELS = {
 }
 
 
-def run_discussion(feature: str, date: str, requirement: str) -> dict:
+def run_discussion(feature: str, date: str, requirement: str, extra_context: str = "") -> dict:
     """
-    Full architect discussion flow.
-    Returns final agreed task.json dict.
+    Full multi-round architect discussion.
+    Returns confirmed task.json dict.
     """
     console.print()
     console.print(Panel(
@@ -37,16 +37,13 @@ def run_discussion(feature: str, date: str, requirement: str) -> dict:
     ))
 
     round_num = 1
-    history = []  # accumulate discussion history
-    task_json = None
+    history = []
 
     while True:
         console.print(f"\n[bold yellow]── Round {round_num} ──[/bold yellow]")
 
-        # Build context from previous rounds
-        context = _build_context(requirement, history)
+        context = _build_context(requirement, history, extra_context)
 
-        # Round prompt varies by round number
         if round_num == 1:
             agent_prompt = (
                 f"Analyze this requirement and share your perspective:\n\n{requirement}\n\n"
@@ -63,7 +60,6 @@ def run_discussion(feature: str, date: str, requirement: str) -> dict:
                 "Refine your position. Be specific."
             )
 
-        # Run 3 architects in parallel
         console.print("[dim]Architects thinking in parallel...[/dim]")
         with console.status("[bold green]Deliberating...[/bold green]"):
             architect_outputs = run_agents_parallel(
@@ -75,11 +71,8 @@ def run_discussion(feature: str, date: str, requirement: str) -> dict:
                 date=date,
             )
 
-        # Display architect outputs
         _display_architect_outputs(architect_outputs, round_num)
 
-        # Mediator synthesizes
-        console.print("\n[dim]Mediator synthesizing...[/dim]")
         mediator_input = _build_mediator_prompt(requirement, architect_outputs, round_num)
         with console.status("[bold yellow]Synthesizing...[/bold yellow]"):
             mediator_output = run_agent(
@@ -92,34 +85,79 @@ def run_discussion(feature: str, date: str, requirement: str) -> dict:
 
         _display_mediator(mediator_output)
 
-        # Save round to history
         history.append({
             "round": round_num,
             "architect_outputs": architect_outputs,
             "mediator_summary": mediator_output,
         })
 
-        # Ask user: continue discussion or proceed?
         console.print()
         action = Prompt.ask(
-            "[bold]What next?[/bold]",
+            "[bold]Next?[/bold]  [dim]next=another round  proceed=build tasks  edit=change requirement[/dim]",
             choices=["next", "edit", "proceed"],
             default="next" if round_num < 2 else "proceed",
         )
 
         if action == "next":
             round_num += 1
-            continue
         elif action == "edit":
-            requirement = click.edit(requirement)
-            if not requirement:
-                console.print("[yellow]No changes made, continuing.[/yellow]")
+            new_req = click.edit(requirement)
+            if new_req and new_req.strip():
+                requirement = new_req.strip()
+                console.print("[green]Requirement updated.[/green]")
             round_num += 1
-            continue
-        elif action == "proceed":
+        else:
             break
 
-    # Generate final task.json
+    return _generate_and_confirm_tasks(feature, date, requirement, history)
+
+
+def run_quick_discussion(feature: str, date: str, requirement: str, extra_context: str = "") -> dict:
+    """
+    Quick mode: one round, architects review only, Mediator goes straight to task.json.
+    """
+    console.print()
+    console.print(Panel(
+        f"[bold yellow]⚡ Quick mode[/bold yellow]\n\n{requirement}",
+        title="Sili-vengers",
+        border_style="yellow",
+    ))
+
+    context = _build_context(requirement, [], extra_context)
+    agent_prompt = (
+        f"Quick review of this requirement:\n\n{requirement}\n\n"
+        "Give your top 2-3 concerns or recommendations. Be brief and direct."
+    )
+
+    console.print("[dim]Quick architect review...[/dim]")
+    with console.status("[bold green]Reviewing...[/bold green]"):
+        architect_outputs = run_agents_parallel(
+            agents=[
+                {"agent_name": a, "prompt": agent_prompt, "extra_context": context}
+                for a in ARCHITECTS
+            ],
+            feature=feature,
+            date=date,
+        )
+
+    _display_architect_outputs(architect_outputs, round_num=1)
+
+    # Mediator goes straight to task.json
+    full_history_text = _format_quick_history(requirement, architect_outputs)
+    with console.status("[bold yellow]Building task plan...[/bold yellow]"):
+        task_json_output = run_agent(
+            agent_name="mediator",
+            prompt=_build_taskjson_prompt(requirement, full_history_text),
+            feature=feature,
+            date=date,
+            task_id="quick_taskjson",
+        )
+
+    task_json = _parse_task_json(task_json_output)
+    return _user_confirm_tasks(task_json, requirement)
+
+
+def _generate_and_confirm_tasks(feature: str, date: str, requirement: str, history: list) -> dict:
     console.print("\n[bold green]Generating task plan...[/bold green]")
     full_history_text = _format_full_history(history)
     with console.status("[bold green]Building task.json...[/bold green]"):
@@ -130,13 +168,8 @@ def run_discussion(feature: str, date: str, requirement: str) -> dict:
             date=date,
             task_id="final_taskjson",
         )
-
     task_json = _parse_task_json(task_json_output)
-
-    # User final confirm
-    task_json = _user_confirm_tasks(task_json, requirement)
-
-    return task_json
+    return _user_confirm_tasks(task_json, requirement)
 
 
 def _display_architect_outputs(outputs: dict, round_num: int):
@@ -144,7 +177,6 @@ def _display_architect_outputs(outputs: dict, round_num: int):
     for agent_name in ARCHITECTS:
         label, color = ARCHITECT_LABELS[agent_name]
         output = outputs.get(agent_name, "[no output]")
-        # Trim for display
         display = output[:1200] + "..." if len(output) > 1200 else output
         panels.append(Panel(
             Markdown(display),
@@ -164,10 +196,10 @@ def _display_mediator(output: str):
     ))
 
 
-def _build_context(requirement: str, history: list) -> str:
-    if not history:
-        return f"Original requirement:\n{requirement}"
-    lines = [f"Original requirement:\n{requirement}\n"]
+def _build_context(requirement: str, history: list, extra_context: str = "") -> str:
+    lines = [f"Original requirement:\n{requirement}"]
+    if extra_context:
+        lines.append(f"\nAdditional context:\n{extra_context}")
     for h in history:
         lines.append(f"\n## Round {h['round']} Summary\n{h['mediator_summary']}")
     return "\n".join(lines)
@@ -178,14 +210,13 @@ def _build_mediator_prompt(requirement: str, outputs: dict, round_num: int) -> s
     for agent_name in ARCHITECTS:
         label, _ = ARCHITECT_LABELS[agent_name]
         parts.append(f"\n### {label}\n{outputs.get(agent_name, '')}")
-
     parts.append("""
 ---
 Your job as Mediator:
-1. Identify key agreements between architects
-2. Surface the 2-3 main disagreements/tensions
+1. Identify key agreements
+2. Surface 2-3 main disagreements/tensions
 3. Propose a synthesis position
-4. List open questions that need another round OR flag if ready to proceed
+4. List open questions or flag if ready to proceed
 Keep it concise. Use markdown headers.
 """)
     return "\n".join(parts)
@@ -201,14 +232,14 @@ Requirement:
 Discussion:
 {history}
 
-Output ONLY valid JSON in this exact format:
+Output ONLY valid JSON in this exact format, no markdown fences:
 {{
   "feature": "<feature name>",
   "requirement_summary": "<one sentence>",
   "tasks": [
     {{
       "id": "task_01",
-      "description": "<clear task description>",
+      "description": "<specific, actionable description>",
       "agent": "<craftsman|reviewer|qa_sentinel|scribe|decomposer|archaeologist>",
       "depends_on": [],
       "status": "pending",
@@ -218,23 +249,20 @@ Output ONLY valid JSON in this exact format:
 }}
 
 Rules:
-- Tasks in the same parallel_group run at the same time
+- Tasks in same parallel_group run simultaneously
 - depends_on lists task ids that must complete first
-- Choose the most appropriate agent for each task
 - Be specific in descriptions
-- Output ONLY the JSON, no markdown fences, no explanation
+- Output ONLY the JSON
 """
 
 
 def _parse_task_json(raw: str) -> dict:
-    import json
-    import re
-    # Strip markdown fences if present
+    import json, re
     cleaned = re.sub(r"```json\s*|```\s*", "", raw).strip()
     try:
         return json.loads(cleaned)
     except json.JSONDecodeError:
-        console.print("[red]Warning: Could not parse task JSON, returning raw[/red]")
+        console.print("[red]Warning: Could not parse task JSON[/red]")
         return {"tasks": [], "raw": raw}
 
 
@@ -249,8 +277,15 @@ def _format_full_history(history: list) -> str:
     return "\n".join(lines)
 
 
+def _format_quick_history(requirement: str, outputs: dict) -> str:
+    lines = [f"Requirement:\n{requirement}\n\nQuick review:\n"]
+    for agent_name in ARCHITECTS:
+        label, _ = ARCHITECT_LABELS[agent_name]
+        lines.append(f"### {label}\n{outputs.get(agent_name, '')}\n")
+    return "\n".join(lines)
+
+
 def _user_confirm_tasks(task_json: dict, requirement: str) -> dict:
-    """Show tasks to user, allow edits before final confirm"""
     import json
 
     console.print()
@@ -272,7 +307,7 @@ def _user_confirm_tasks(task_json: dict, requirement: str) -> dict:
 
     while True:
         action = Prompt.ask(
-            "\n[bold]Confirm this plan?[/bold]",
+            "\n[bold]Confirm plan?[/bold]",
             choices=["yes", "edit", "abort"],
             default="yes",
         )

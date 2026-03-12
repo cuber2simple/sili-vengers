@@ -10,10 +10,11 @@ from sili_vengers.commands.crew_cmd import crew
 from sili_vengers.commands.status_cmd import status
 from sili_vengers.commands.agents_cmd import agents
 from sili_vengers.commands.task_cmd import task
+from sili_vengers.commands.log_cmd import log
 
 
 @click.group()
-@click.version_option(version="0.1.0", prog_name="sili-vengers")
+@click.version_option(version="0.2.0", prog_name="sili-vengers")
 def cli():
     """
     ⚡ Sili-vengers - Multi-agent Claude Code orchestration
@@ -31,6 +32,7 @@ cli.add_command(crew)
 cli.add_command(status)
 cli.add_command(agents)
 cli.add_command(task)
+cli.add_command(log)
 
 
 if __name__ == "__main__":
