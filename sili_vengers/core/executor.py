@@ -5,6 +5,7 @@ Handles parallel groups, git merges, conflict detection, and feature completion.
 
 import subprocess
 import threading
+import sys
 from pathlib import Path
 from datetime import datetime
 from rich.console import Console
@@ -18,6 +19,12 @@ from sili_vengers.core.runner import run_task_agent
 console = Console()
 
 
+def set_terminal_title(title: str):
+    """Set terminal window/tab title via ANSI escape sequence."""
+    sys.stdout.write(f"\033]0;{title}\007")
+    sys.stdout.flush()
+
+
 def run_all_tasks(feature: str, date: str):
     """
     Full execution pipeline:
@@ -26,6 +33,8 @@ def run_all_tasks(feature: str, date: str):
     3. On merge conflict: mark task as merge_conflict, pause dependents
     4. When all done: generate result.md, merge feature → main
     """
+    set_terminal_title(f"⚡ sili-vengers | {feature}")
+
     task_data = load_task_json(feature, date)
     tasks = task_data.get("tasks", [])
     feature_dir = get_feature_dir(feature, date)
@@ -66,9 +75,11 @@ def run_all_tasks(feature: str, date: str):
 
         def execute_task(task):
             tid = task["id"]
+
+            # Update terminal title per task
+            set_terminal_title(f"⚡ sili-vengers | {feature} | {tid}")
             console.print(f"  [cyan]→[/cyan] {tid}: {task['description'][:60]}")
 
-            # Update status to running
             _update_task(feature, date, tid, "running")
 
             try:
@@ -80,13 +91,11 @@ def run_all_tasks(feature: str, date: str):
                     requirements=requirements,
                 )
 
-                # Save result file
                 result_dir = feature_dir / "tasks"
                 result_dir.mkdir(parents=True, exist_ok=True)
                 result_file = result_dir / f"{tid}_result.md"
                 result_file.write_text(output)
 
-                # Commit to task branch
                 merge_ok = _commit_and_merge_task(feature, date, tid, task)
 
                 with lock:
@@ -95,7 +104,7 @@ def run_all_tasks(feature: str, date: str):
                         console.print(f"  [green]✓[/green] {tid} done")
                     else:
                         results[tid] = "merge_conflict"
-                        console.print(f"  [red]⚡[/red] {tid} merge conflict")
+                        console.print(f"  [magenta]⚡[/magenta] {tid} merge conflict")
 
             except Exception as e:
                 with lock:
@@ -108,9 +117,7 @@ def run_all_tasks(feature: str, date: str):
         for t in threads:
             t.join()
 
-        # Update statuses and reload task list
-        task_data = load_task_json(feature, date)
-        tasks = task_data.get("tasks", [])
+        # Update statuses
         for tid, status in results.items():
             _update_task(feature, date, tid, status)
             if status in ("failed", "merge_conflict"):
@@ -120,7 +127,10 @@ def run_all_tasks(feature: str, date: str):
         task_data = load_task_json(feature, date)
         tasks = task_data.get("tasks", [])
 
-    # Check for any conflicts
+    # Restore feature-level title
+    set_terminal_title(f"⚡ sili-vengers | {feature}")
+
+    # Check for issues
     task_data = load_task_json(feature, date)
     tasks = task_data.get("tasks", [])
     conflicts = [t for t in tasks if t.get("status") == "merge_conflict"]
@@ -130,32 +140,24 @@ def run_all_tasks(feature: str, date: str):
         _show_intervention_needed(feature, date, conflicts, failed)
         return
 
-    # All done — finalize
     _finalize_feature(feature, date, tasks, requirements)
 
 
 def _commit_and_merge_task(feature: str, date: str, task_id: str, task: dict) -> bool:
-    """
-    Commit task results to task branch, then merge into feature branch.
-    Returns True if merge succeeded, False on conflict.
-    """
     feature_branch = f"feature/{feature}_{date}"
     task_branch = f"task/{task_id}_{date}"
     worktree = Path(f".worktrees/{feature_branch}")
 
     if not worktree.exists():
-        # No git setup, skip
         return True
 
     try:
-        # Create task branch from feature branch
         subprocess.run(
             ["git", "worktree", "add", "-b", task_branch,
              f".worktrees/{task_branch}", feature_branch],
             capture_output=True, check=True
         )
 
-        # Copy result files into task worktree
         task_worktree = Path(f".worktrees/{task_branch}")
         result_src = Path(f".vengers/{feature}_{date}/tasks/{task_id}_result.md")
         if result_src.exists():
@@ -164,21 +166,18 @@ def _commit_and_merge_task(feature: str, date: str, task_id: str, task: dict) ->
             import shutil
             shutil.copy(result_src, dest_dir / f"{task_id}_result.md")
 
-        # Commit in task worktree
         subprocess.run(["git", "add", "-A"], cwd=task_worktree, capture_output=True)
         subprocess.run(
             ["git", "commit", "-m", f"task({task_id}): {task['description'][:60]}"],
             cwd=task_worktree, capture_output=True
         )
 
-        # Merge task branch into feature worktree
         merge_result = subprocess.run(
             ["git", "merge", "--no-ff", task_branch,
              "-m", f"merge: {task_id} into {feature_branch}"],
             cwd=worktree, capture_output=True, text=True
         )
 
-        # Clean up task worktree
         subprocess.run(
             ["git", "worktree", "remove", str(task_worktree), "--force"],
             capture_output=True
@@ -187,23 +186,21 @@ def _commit_and_merge_task(feature: str, date: str, task_id: str, task: dict) ->
         return merge_result.returncode == 0
 
     except subprocess.CalledProcessError:
-        return True  # Git not available, treat as success
+        return True
 
 
 def _finalize_feature(feature: str, date: str, tasks: list, requirements: str):
-    """Generate result.md and merge feature branch to main."""
+    set_terminal_title(f"⚡ sili-vengers | {feature} | finalizing...")
     console.print(f"\n[bold green]── Finalizing feature ──[/bold green]")
 
     feature_dir = get_feature_dir(feature, date)
 
-    # Collect all task results
     task_results = []
     for t in tasks:
         result_file = feature_dir / "tasks" / f"{t['id']}_result.md"
         if result_file.exists():
             task_results.append(f"## {t['id']}: {t['description']}\n\n{result_file.read_text()}")
 
-    # Generate result.md via Scribe
     console.print("[dim]Scribe generating result.md...[/dim]")
     from sili_vengers.core.runner import run_agent
     scribe_prompt = f"""
@@ -233,7 +230,6 @@ Write a clear result.md covering:
     result_file.write_text(result_content)
     console.print(f"[green]✓[/green] result.md written")
 
-    # Merge feature → main
     feature_branch = f"feature/{feature}_{date}"
     worktree = Path(f".worktrees/{feature_branch}")
 
@@ -246,12 +242,13 @@ Write a clear result.md covering:
         if merge.returncode == 0:
             console.print(f"[green]✓[/green] Merged [cyan]{feature_branch}[/cyan] → main")
         else:
-            console.print(f"[yellow]![/yellow] Merge to main failed, resolve manually:")
+            console.print(f"[yellow]![/yellow] Merge to main failed:")
             console.print(f"  git merge {feature_branch}")
-    else:
-        console.print("[dim]  (no worktree, skipping merge)[/dim]")
 
     update_feature_status(feature, date, "done")
+
+    # Restore default title
+    set_terminal_title("⚡ sili-vengers")
 
     console.print(Panel(
         f"[bold green]✓ Feature complete![/bold green]\n\n"
@@ -262,8 +259,8 @@ Write a clear result.md covering:
 
 
 def _show_intervention_needed(feature: str, date: str, conflicts: list, failed: list):
-    """Show clear instructions when human intervention is needed."""
     feature_branch = f"feature/{feature}_{date}"
+    set_terminal_title(f"⚡ sili-vengers | {feature} | needs attention")
 
     console.print(Panel(
         "[bold yellow]⚠️  Human intervention needed[/bold yellow]",
@@ -278,16 +275,19 @@ def _show_intervention_needed(feature: str, date: str, conflicts: list, failed: 
             console.print(f"    2. git merge task/{t['id']}_{date}")
             console.print(f"    3. Resolve conflicts")
             console.print(f"    4. git add . && git commit")
-            console.print(f"    5. sili-vengers task retry {t['id']}")
+            console.print(f"    5. [cyan]sili-vengers task retry {t['id']}[/cyan]")
+            console.print(f"       or [cyan]/sv-retry {t['id']}[/cyan]")
 
     if failed:
         console.print("\n[red]Failed tasks:[/red]")
         for t in failed:
             console.print(f"\n  [cyan]{t['id']}[/cyan]: {t['description'][:60]}")
-            console.print(f"    sili-vengers task retry {t['id']}")
-            console.print(f"    sili-vengers task retry {t['id']} --agent craftsman  # change agent")
+            console.print(f"    [cyan]sili-vengers task retry {t['id']}[/cyan]")
+            console.print(f"    [cyan]sili-vengers task retry {t['id']} --agent craftsman[/cyan]")
+            console.print(f"    or [cyan]/sv-retry {t['id']}[/cyan]")
 
     console.print(f"\n  After fixing: [cyan]sili-vengers task run {feature}[/cyan]")
+    console.print(f"  or:           [cyan]/sv-retry <task_id>[/cyan]")
 
 
 def _deps_met(task: dict, all_tasks: list) -> bool:

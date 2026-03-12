@@ -18,7 +18,7 @@ pipx install .
 ## Quick Start
 
 ```bash
-# Initialize in your project
+# Initialize in your project (also installs Claude Code slash commands)
 cd your-project
 sili-vengers init
 
@@ -40,11 +40,28 @@ sili-vengers task retry task_03
 sili-vengers task retry task_03 --agent craftsman  # retry with a different agent
 ```
 
-## Commands
+## Claude Code Slash Commands
+
+After `sili-vengers init`, these commands are available directly in Claude Code:
 
 | Command | Description |
 |---------|-------------|
-| `init` | Initialize Sili-vengers, create agents & hooks |
+| `/sv-start <description>` | Start a new feature with architect discussion |
+| `/sv-quick <description>` | Quick mode: one review round, straight to tasks |
+| `/sv-status` | Show task progress for active features |
+| `/sv-crew` | List all active features |
+| `/sv-retry <task_id>` | Retry a failed or conflicted task |
+| `/sv-log` | View execution logs |
+| `/sv-stop` | Save and pause current feature |
+| `/sv-resume` | Resume a stopped feature |
+| `/sv-agents` | List all agents and their roles |
+| `/sv-init` | Initialize Sili-vengers in current project |
+
+## CLI Commands
+
+| Command | Description |
+|---------|-------------|
+| `init` | Initialize Sili-vengers, create agents, hooks & Claude Code commands |
 | `start "description"` | New feature: discuss → confirm → auto-execute |
 | `start --quick` | Quick mode: one review round, skip discussion |
 | `start --dry-run` | Generate task.json only, do not run tasks |
@@ -79,7 +96,7 @@ sili-vengers task retry task_03 --agent craftsman  # retry with a different agen
 ## The Flow
 
 ```
-sili-vengers start "description"
+sili-vengers start "description"   or   /sv-start description
          │
          ▼
   [standard] 3 architects discuss in parallel (multi-round)
@@ -99,6 +116,7 @@ sili-vengers start "description"
          │
          ├── merge conflict → status: merge_conflict
          │   └── resolve manually → sili-vengers task retry
+         │                      or → /sv-retry task_03
          │
          └── all done → Scribe writes result.md → merge feature → main
 ```
@@ -127,6 +145,7 @@ When a task hits a merge conflict, Sili-vengers will guide you:
     3. Resolve conflicts
     4. git add . && git commit
     5. sili-vengers task retry task_03
+    or /sv-retry task_03
 ```
 
 ## File Structure
@@ -134,6 +153,12 @@ When a task hits a merge conflict, Sili-vengers will guide you:
 ```
 your-project/
 ├── vengers-code.md                    # Project config (read by Claude)
+├── .claude/
+│   └── commands/                      # Claude Code slash commands (auto-installed)
+│       ├── sv-start.md
+│       ├── sv-quick.md
+│       ├── sv-status.md
+│       └── ...
 ├── .vengers/
 │   ├── .vengers.toml                  # Master state
 │   ├── agents/                        # Agent system prompts
@@ -165,3 +190,63 @@ Each task runs as a separate `claude --print` subprocess:
 - Tasks run truly in parallel
 - All state is persisted to files — resume anytime
 - One process crashing does not affect others
+
+## Agent Details
+
+### 🔮 The Visionary
+Thinks in terms of elegance, intuition, and long-term system beauty.
+- Asks: *"Will this design still feel right in 10 years?"*
+- Focuses on API elegance, conceptual integrity, unnecessary complexity, developer experience
+- Pushes back when something feels "off" even before articulating why
+
+### ⚙️ The Architect
+Deep technical expert focused on correctness, performance, and real-world resilience.
+- Asks: *"What happens when this fails? What happens at 10x load?"*
+- Focuses on bottlenecks, security boundaries, data consistency, dependency risk, migration paths
+- Stress-tests elegant ideas against production realities
+
+### 🔭 The Scout
+Research-oriented architect who knows how the industry has solved similar problems.
+- Asks: *"How have others solved this? What can we learn from them?"*
+- References real-world patterns: major OSS projects, company engineering blogs, battle-tested approaches
+- Distinguishes hype from proven solutions
+
+### ⚖️ The Mediator
+Synthesizes the three architects into clear, actionable decisions.
+- Identifies agreements and surfaces real disagreements
+- Proposes synthesis positions that honor the best of each view
+- Drives toward task.json — does not add new opinions
+
+### 🔬 The Decomposer
+Breaks high-level requirements into precise, executable tasks.
+- Produces atomic tasks: one clear action, one agent, one result
+- Maps explicit dependency relationships and parallel groups
+- Ensures each task is completable in isolation
+
+### 🔨 The Craftsman
+Writes code with care, clarity, and craft.
+- Optimizes for readability over cleverness
+- Reviews own code before submitting
+- Notes assumptions and flags anything needing human review
+
+### 👁️ The Reviewer
+Reviews code for quality, correctness, and long-term maintainability.
+- Checks: correctness, clarity, patterns, security, performance, test coverage
+- Output: APPROVE / REQUEST_CHANGES / NEEDS_DISCUSSION with clear reasoning
+
+### 🛡️ The QA Sentinel
+Last line of defense before code ships. Thinks like an adversary.
+- Covers: happy path, edge cases, failure cases, concurrency, malicious input
+- Produces test plans and risk assessments (LOW / MEDIUM / HIGH)
+
+### 🏛️ The Archaeologist
+Analyzes legacy code to find safe paths forward.
+- Maps what code actually does (not what it claims)
+- Identifies load-bearing walls and hidden dependencies
+- Proposes the safest migration or refactoring path
+
+### 📜 The Scribe
+Writes clear, useful technical documentation.
+- Documents what was actually built, not what was planned
+- Explains the *why* behind decisions, not just the *what*
+- Produces the final `result.md` when a feature completes
