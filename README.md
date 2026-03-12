@@ -42,20 +42,21 @@ sili-vengers task retry task_03 --agent craftsman  # retry with a different agen
 
 ## Claude Code Slash Commands
 
-After `sili-vengers init`, these commands are available directly in Claude Code:
+After `sili-vengers init`, these commands are available directly in Claude Code.
+All commands run in the **current Claude Code session** — no new process spawned.
 
 | Command | Description |
 |---------|-------------|
+| `/sv-init` | Initialize Sili-vengers in current project |
 | `/sv-start <description>` | Start a new feature with architect discussion |
 | `/sv-quick <description>` | Quick mode: one review round, straight to tasks |
 | `/sv-status` | Show task progress for active features |
-| `/sv-crew` | List all active features |
+| `/sv-crew` | List all active features with task progress and next commands |
 | `/sv-retry <task_id>` | Retry a failed or conflicted task |
 | `/sv-log` | View execution logs |
 | `/sv-stop` | Save and pause current feature |
 | `/sv-resume` | Resume a stopped feature |
 | `/sv-agents` | List all agents and their roles |
-| `/sv-init` | Initialize Sili-vengers in current project |
 
 ## CLI Commands
 
@@ -68,8 +69,8 @@ After `sili-vengers init`, these commands are available directly in Claude Code:
 | `start --context file` | Inject extra context files for architects |
 | `resume [feature]` | Resume a stopped feature |
 | `stop [feature]` | Save and pause current feature |
-| `crew` | List all active features |
-| `status [feature]` | Show task progress for a feature |
+| `crew` | List all active features with task progress and next commands |
+| `status [feature]` | Show full task list for a feature |
 | `log [feature]` | Show execution logs |
 | `log --task task_02` | Show logs for a specific task |
 | `agents` | List all agents |
@@ -96,7 +97,10 @@ After `sili-vengers init`, these commands are available directly in Claude Code:
 ## The Flow
 
 ```
-sili-vengers start "description"   or   /sv-start description
+Terminal or Claude Code
+─────────────────────────────────────────────────────────
+sili-vengers start "description"
+  or in Claude Code: /sv-start description
          │
          ▼
   [standard] 3 architects discuss in parallel (multi-round)
@@ -106,19 +110,53 @@ sili-vengers start "description"   or   /sv-start description
   Mediator synthesizes → generates task.json
          │
          ▼
-  User confirms (editable)
+  ┌─────────────────────────────────────────────┐
+  │ 👤 USER INPUT REQUIRED                      │
+  │ Round complete:                             │
+  │   next    → another discussion round        │
+  │   edit    → modify the requirement          │
+  │   proceed → move to task planning           │
+  └─────────────────────────────────────────────┘
+         │
+         ▼
+  Mediator generates task.json
+         │
+         ▼
+  ┌─────────────────────────────────────────────┐
+  │ 👤 USER INPUT REQUIRED                      │
+  │ Review task plan:                           │
+  │   yes   → confirm and start execution       │
+  │   edit  → open task.json in editor          │
+  │   abort → cancel                            │
+  └─────────────────────────────────────────────┘
          │
          ▼
   Tasks execute automatically in parallel groups
   Each task = independent claude subprocess
+  Terminal title → ⚡ sili-vengers | {feature} | {task_id}
          │
          ├── task done → commit task branch → merge into feature branch
          │
          ├── merge conflict → status: merge_conflict
-         │   └── resolve manually → sili-vengers task retry
-         │                      or → /sv-retry task_03
+         │   ┌─────────────────────────────────────────────┐
+         │   │ 👤 USER INPUT REQUIRED                      │
+         │   │ 1. cd .worktrees/feature/{feature}_{date}   │
+         │   │ 2. git merge task/{task_id}_{date}          │
+         │   │ 3. Resolve conflicts                        │
+         │   │ 4. git add . && git commit                  │
+         │   │ 5. sili-vengers task retry {task_id}        │
+         │   │    or /sv-retry {task_id}                   │
+         │   └─────────────────────────────────────────────┘
          │
          └── all done → Scribe writes result.md → merge feature → main
+
+─────────────────────────────────────────────────────────
+While running, check progress anytime:
+  sili-vengers crew       →  all features + next commands
+  sili-vengers status     →  full task list for active feature
+  /sv-crew                →  same, inside Claude Code
+  /sv-status              →  same, inside Claude Code
+─────────────────────────────────────────────────────────
 ```
 
 ## Task Statuses
@@ -131,21 +169,29 @@ sili-vengers start "description"   or   /sv-start description
 | `failed` | Execution error, needs retry |
 | `merge_conflict` | Git merge conflict, needs manual resolution |
 
-## Handling Merge Conflicts
+## crew / sv-crew Output
 
-When a task hits a merge conflict, Sili-vengers will guide you:
+`crew` and `/sv-crew` show a rich summary of every active feature,
+including which tasks are running, which need attention, and exactly
+what command to run next — both CLI and Claude Code slash command:
 
 ```
-⚠️  task_03 merge conflict
-    Branch: task/task_03_20250312
+⚡ Active (2)
 
-    To resolve:
-    1. cd .worktrees/feature/migrate_auth_20250312
-    2. git merge task/task_03_20250312
-    3. Resolve conflicts
-    4. git add . && git commit
-    5. sili-vengers task retry task_03
-    or /sv-retry task_03
+  migrate_auth  20250312  needs attention  3/7 tasks
+  migrate auth system to JWT...
+    ✓ task_02  design schema              craftsman
+    ⚡ task_03  implement middleware       craftsman   ← merge conflict
+    ○ task_04  update user model          craftsman
+
+  Commands:
+    sili-vengers status migrate_auth   or  /sv-status migrate_auth
+    sili-vengers task retry task_03    or  /sv-retry task_03
+    sili-vengers log migrate_auth      or  /sv-log migrate_auth
+
+  payment_flow  20250311  paused  5/8 tasks
+  ...
+    sili-vengers resume payment_flow   or  /sv-resume payment_flow
 ```
 
 ## File Structure
@@ -155,10 +201,16 @@ your-project/
 ├── vengers-code.md                    # Project config (read by Claude)
 ├── .claude/
 │   └── commands/                      # Claude Code slash commands (auto-installed)
+│       ├── sv-init.md
 │       ├── sv-start.md
 │       ├── sv-quick.md
 │       ├── sv-status.md
-│       └── ...
+│       ├── sv-crew.md
+│       ├── sv-retry.md
+│       ├── sv-log.md
+│       ├── sv-stop.md
+│       ├── sv-resume.md
+│       └── sv-agents.md
 ├── .vengers/
 │   ├── .vengers.toml                  # Master state
 │   ├── agents/                        # Agent system prompts
