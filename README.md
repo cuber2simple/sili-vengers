@@ -5,11 +5,11 @@
 ## Install
 
 ```bash
-# 推荐：pipx 全局安装
+# Recommended: install globally via pipx
 brew install pipx
 pipx install git+ssh://git@github.com/cuber2simple/sili-vengers.git
 
-# 或者 clone 后本地安装
+# Or clone and install locally
 git clone git@github.com:cuber2simple/sili-vengers.git
 cd sili-vengers
 pipx install .
@@ -18,63 +18,63 @@ pipx install .
 ## Quick Start
 
 ```bash
-# 1. 在你的项目里初始化
+# Initialize in your project
 cd your-project
 sili-vengers init
 
-# 2. 开始一个新 feature（标准模式：多轮讨论）
+# Start a new feature (standard: multi-round architect discussion)
 sili-vengers start "migrate auth system to JWT"
 
-# 2b. 快速模式（小需求/bug fix，一轮审核直接跑）
+# Quick mode (small tasks / bug fixes — one review round, straight to execution)
 sili-vengers start --quick "fix login button color"
 
-# 2c. 干跑模式（只生成计划，不执行）
+# Dry run (generate task plan only, do not execute)
 sili-vengers start --dry-run "big refactor"
 
-# 2d. 带额外上下文（给架构师喂文档）
+# With extra context files for the architects
 sili-vengers start --context ./docs/spec.md "new payment flow"
 
-# 3. confirm task.json 后自动执行，全程无需干预
-# 如果有失败或冲突，按提示处理后：
+# After confirming task.json, execution runs automatically.
+# If a task fails or hits a merge conflict:
 sili-vengers task retry task_03
-sili-vengers task retry task_03 --agent craftsman  # 换 agent 重跑
+sili-vengers task retry task_03 --agent craftsman  # retry with a different agent
 ```
 
 ## Commands
 
 | Command | Description |
 |---------|-------------|
-| `init` | 初始化，创建 agents & hooks |
-| `start "description"` | 新 feature：讨论 → 确认 → 自动执行 |
-| `start --quick` | 快速模式：一轮审核直接跑 |
-| `start --dry-run` | 只生成 task.json，不执行 |
-| `start --context file` | 给架构师注入额外上下文文件 |
-| `resume [feature]` | 恢复暂停的 feature |
-| `stop [feature]` | 保存并暂停当前 feature |
-| `crew` | 查看所有进行中的 feature |
-| `status [feature]` | 查看 task 进度 |
-| `log [feature]` | 查看执行日志 |
-| `log --task task_02` | 查看指定 task 的日志 |
-| `agents` | 列出所有 agent |
-| `task run [feature]` | 手动触发执行所有 pending tasks |
-| `task done <id>` | 手动标记 task 完成 |
-| `task retry <id>` | 重置失败的 task 并重跑 |
-| `task retry <id> --agent` | 换 agent 重跑 |
+| `init` | Initialize Sili-vengers, create agents & hooks |
+| `start "description"` | New feature: discuss → confirm → auto-execute |
+| `start --quick` | Quick mode: one review round, skip discussion |
+| `start --dry-run` | Generate task.json only, do not run tasks |
+| `start --context file` | Inject extra context files for architects |
+| `resume [feature]` | Resume a stopped feature |
+| `stop [feature]` | Save and pause current feature |
+| `crew` | List all active features |
+| `status [feature]` | Show task progress for a feature |
+| `log [feature]` | Show execution logs |
+| `log --task task_02` | Show logs for a specific task |
+| `agents` | List all agents |
+| `task run [feature]` | Manually trigger execution of pending tasks |
+| `task done <id>` | Manually mark a task as done |
+| `task retry <id>` | Reset a failed task and re-run it |
+| `task retry <id> --agent` | Retry with a different agent |
 
 ## The Crew
 
 | Agent | Role |
 |-------|------|
-| 🔮 **Visionary** | 技术美学、直觉与系统优雅性 |
-| ⚙️ **Architect** | 深度技术、性能与可靠性 |
-| 🔭 **Scout** | 研究、业界模式与开源方案 |
-| ⚖️ **Mediator** | 汇总讨论，驱动决策 |
-| 🔬 **Decomposer** | 需求拆解 |
-| 🔨 **Craftsman** | 代码实现 |
-| 👁️ **Reviewer** | 代码审核 |
-| 🛡️ **QA Sentinel** | 测试与质量保证 |
-| 🏛️ **Archaeologist** | 老代码分析 |
-| 📜 **Scribe** | 文档编写 |
+| 🔮 **Visionary** | Tech aesthetics, intuition & system elegance |
+| ⚙️ **Architect** | Performance, correctness & resilience |
+| 🔭 **Scout** | Research, industry patterns & OSS landscape |
+| ⚖️ **Mediator** | Synthesizes discussion into decisions |
+| 🔬 **Decomposer** | Breaks requirements into atomic tasks |
+| 🔨 **Craftsman** | Code implementation |
+| 👁️ **Reviewer** | Code review |
+| 🛡️ **QA Sentinel** | Testing & quality assurance |
+| 🏛️ **Archaeologist** | Legacy code analysis |
+| 📜 **Scribe** | Documentation |
 
 ## The Flow
 
@@ -82,44 +82,49 @@ sili-vengers task retry task_03 --agent craftsman  # 换 agent 重跑
 sili-vengers start "description"
          │
          ▼
-  [标准] 三架构师并行讨论（多轮）    [quick] 一轮快速审核
+  [standard] 3 architects discuss in parallel (multi-round)
+  [quick]    1 round review, straight to tasks
          │
          ▼
-  Mediator 汇总 → 生成 task.json
+  Mediator synthesizes → generates task.json
          │
          ▼
-  用户 confirm（可编辑）
+  User confirms (editable)
          │
          ▼
-  自动按 parallel_group 并行执行 tasks
-  每个 task = 独立 claude 进程
+  Tasks execute automatically in parallel groups
+  Each task = independent claude subprocess
          │
-         ├── task 完成 → commit task 分支 → merge 到 feature 分支
+         ├── task done → commit task branch → merge into feature branch
          │
-         ├── merge 冲突 → 状态标记 merge_conflict
-         │   └── 手动解决 → sili-vengers task retry
+         ├── merge conflict → status: merge_conflict
+         │   └── resolve manually → sili-vengers task retry
          │
-         └── 全部完成 → Scribe 生成 result.md → merge feature → main
+         └── all done → Scribe writes result.md → merge feature → main
 ```
 
-## Task 状态
+## Task Statuses
 
-| 状态 | 说明 |
-|------|------|
-| `pending` | 等待执行 |
-| `running` | 执行中 |
-| `done` | 完成 |
-| `failed` | 执行失败，需 retry |
-| `merge_conflict` | 代码合并冲突，需手动解决 |
+| Status | Description |
+|--------|-------------|
+| `pending` | Waiting to run |
+| `running` | Currently executing |
+| `done` | Completed successfully |
+| `failed` | Execution error, needs retry |
+| `merge_conflict` | Git merge conflict, needs manual resolution |
 
-## 处理 merge conflict
+## Handling Merge Conflicts
 
-```bash
-# 系统会提示：
+When a task hits a merge conflict, Sili-vengers will guide you:
+
+```
 ⚠️  task_03 merge conflict
+    Branch: task/task_03_20250312
+
+    To resolve:
     1. cd .worktrees/feature/migrate_auth_20250312
     2. git merge task/task_03_20250312
-    3. 解决冲突
+    3. Resolve conflicts
     4. git add . && git commit
     5. sili-vengers task retry task_03
 ```
@@ -128,35 +133,35 @@ sili-vengers start "description"
 
 ```
 your-project/
-├── vengers-code.md                    # 项目配置（Claude 读取）
+├── vengers-code.md                    # Project config (read by Claude)
 ├── .vengers/
-│   ├── .vengers.toml                  # 总状态
+│   ├── .vengers.toml                  # Master state
 │   ├── agents/                        # Agent system prompts
 │   │   ├── visionary.md
 │   │   ├── architect.md
 │   │   └── ...
-│   ├── hooks/                         # Hook 脚本
+│   ├── hooks/                         # Hook scripts
 │   │   ├── post-write.sh
 │   │   └── ...
-│   └── {feature}_{date}/              # 每个 feature 的工作目录
+│   └── {feature}_{date}/              # Per-feature workspace
 │       ├── requirements.md
 │       ├── task.json
-│       ├── logs/                      # 各 agent 执行日志
+│       ├── logs/                      # Per-agent execution logs
 │       ├── tasks/
 │       │   ├── task_01_result.md
 │       │   ├── task_01_review.md
 │       │   └── task_01_docs.md
-│       └── result.md                  # 最终汇总
+│       └── result.md                  # Final summary
 └── .worktrees/
-    └── feature/{feature}_{date}/      # Git worktree
-        └── task/{task_id}_{date}/     # 每个 task 的临时分支
+    └── feature/{feature}_{date}/      # Git worktree per feature
+        └── task/{task_id}_{date}/     # Temporary task branches
 ```
 
 ## Why Independent Processes?
 
-每个 task 是独立的 `claude --print` 子进程：
+Each task runs as a separate `claude --print` subprocess:
 
-- `/clear` 永远不会中断正在运行的 tasks
-- Tasks 真正并行执行
-- 所有状态持久化到文件，随时可以 resume
-- 进程崩溃不影响其他 tasks
+- `/clear` never kills running tasks
+- Tasks run truly in parallel
+- All state is persisted to files — resume anytime
+- One process crashing does not affect others
